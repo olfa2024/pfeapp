@@ -1,0 +1,67 @@
+spring:
+  application:
+    name: api-gateway
+
+  ## GATEWAY CONFIGURATIONS
+  cloud:
+    gateway:
+      routes:
+        ## service1
+        - id: prayertime
+          uri: lb://prayertime
+          predicates:
+            - Path=/prayertime/api/prayers/**
+          filters:
+            - StripPrefix=1
+
+        ## Service2
+        - id: cours
+          uri: lb://cours
+          predicates:
+            - Path=/cours/api/media/**
+          filters:
+            - StripPrefix=1
+
+        ## Service3
+        - id: gestionrecettes
+          uri: lb://gestionrecettes
+          predicates:
+            - Path=/gestionrecettes/recipes/**
+          filters:
+            - StripPrefix=1
+
+        ## Service4
+        - id: quran
+          uri: lb://quran
+          predicates:
+            - Path=/quran/api/audio/abdelbaset/**
+            - Path=/quran/api/audio/abubaker/**
+          filters:
+            - StripPrefix=1
+
+
+
+        - id: donnation
+          uri: lb://donnation
+          predicates:
+            - Path=/donnation/api/donations/**
+
+          filters:
+            - StripPrefix=1
+
+
+        - id: authhentification
+          uri: lb://authhentification
+          predicates:
+             - Path=/authhentification/api/users/**
+
+          filters:
+             - StripPrefix=1
+
+server:
+  port: 8080
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka
