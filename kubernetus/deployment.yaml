@@ -1,18 +1,36 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: postgres-pv-claim
+  name: postgres-pvc
+  
 spec:
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
       storage: 1Gi
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: postgres-pv
+  
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: "/mnt/data"
+
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: postgres
+  name: postgres-deployment
+  
 spec:
   replicas: 1
   selector:
@@ -25,106 +43,117 @@ spec:
     spec:
       containers:
       - name: postgres
-        image: postgres:13
+        image: postgres:latest
         env:
         - name: POSTGRES_DB
           value: postgres
         - name: POSTGRES_USER
-          value: postgres
+          value: "postgres"
         - name: POSTGRES_PASSWORD
           value: "0000"
         ports:
         - containerPort: 5432
         volumeMounts:
-        - name: postgres-storage
+        - name: postgres-persistent-storage
           mountPath: /var/lib/postgresql/data
-        - name: postgres-sql-volume
-          mountPath: /mnt/backuppostgres.sql  
+        - name: remote-sql-volume
+          mountPath: /docker-entrypoint-initdb.d
       volumes:
-      - name: postgres-storage
+      - name: postgres-persistent-storage
         persistentVolumeClaim:
-          claimName: postgres-pv-claim
-      - name: postgres-sql-volume
+          claimName: postgres-pvc
+      - name: remote-sql-volume
         configMap:
-          name: postgres-sql-map
+          name: export-sql-configmap
+
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: postgres
+  name: postgres-service
+  
 spec:
-  ports:
-  - port: 5432
   selector:
     app: postgres
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432
+  type: LoadBalancer
+
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: backend-prayer
+  name: prayertime
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: backend-prayer
+      app: prayertime    # Ensure this matches the labels used in the Pod template
   template:
     metadata:
       labels:
-        app: backend-prayer
+        app: prayertime   # Make sure these labels match the selector above
     spec:
       containers:
-      - name: backend-prayer
-        image: olfasalem/prayer:latest
+      - name: prayertime
+        image: olfasalem/prayertime:latest
+        imagePullPolicy: Always
         ports:
-        - containerPort: 8083
-        
+        - containerPort: 8098
         env:
         - name: SPRING_DATASOURCE_URL
-          value: jdbc:postgresql://postgres:5432/postgres
+          value: jdbc:postgresql://postgres-service:5432/postgres
         - name: SPRING_DATASOURCE_USERNAME
           value: postgres
         - name: SPRING_DATASOURCE_PASSWORD
           value: "0000"
         - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
           value: http://eureka-server:8761/eureka/
+
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: backend-prayer
+  labels:
+    app: prayertime
+    k8s-app: prayertime
+  name: prayertime
 spec:
   selector:
-    app: backend-prayer
+    app: prayertime
   ports:
-  - protocol: TCP
-    port: 8083
-    targetPort: 8083
+  - name: http
+    port: 8098
+    protocol: TCP
+    targetPort: 8098
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: frontend
+  name: ramadan
 spec:
+  replicas: 3
   selector:
     matchLabels:
       app: hello
-      tier: frontend
+      tier: ramadan
       track: stable
-  replicas: 3
   template:
     metadata:
       labels:
         app: hello
-        tier: frontend
+        tier: ramadan
         track: stable
     spec:
       containers:
       - name: suiviramadan
-        image: olfaadevops.azurecr.io/suiviramadangit:22  
+        image: olfaadevops.azurecr.io/suiviramadangit:22
         lifecycle:
           preStop:
             exec:
-              command: ["/usr/sbin/nginx","-s","quit"]
+              command: ["/usr/sbin/nginx", "-s", "quit"]
         resources:
           limits:
             memory: "4Gi"
@@ -133,20 +162,19 @@ spec:
             memory: "200Mi"
             cpu: "100m"
         env:
-        - name: BACKEND_URL  
-          value: "http://backend-prayer:8083"  
+        - name: BACKEND_URL
+          value: "http://prayertime:8098/api/prayers"
       imagePullSecrets:
-      - name: my-secret  
-
+      - name: my-secret
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: frontend
+  name: ramadan
 spec:
   selector:
     app: hello
-    tier: frontend
+    tier: ramadan
   ports:
   - protocol: TCP
     port: 80
@@ -230,3 +258,4 @@ spec:
     port: 8761
     targetPort: 8761
   type: NodePort
+
